@@ -1,29 +1,33 @@
 import streamlit as st
-import pytesseract
 from PIL import Image
 import requests
-import json
-
-# Local spelling correction using pyspellchecker
+from io import BytesIO
 from spellchecker import SpellChecker
 
-# Function to extract text and confidence from the uploaded image using OCR
+# Function to call OCR.Space API and extract text
 def extract_text_from_image(image):
-    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-    data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
+    api_key = 'K84350751588957'  # Replace with your key if you have one
 
-    text = ''
-    word_confidences = []
+    buffered = BytesIO()
+    image.save(buffered, format="PNG")
+    img_bytes = buffered.getvalue()
 
-    for i in range(len(data['text'])):
-        word = data['text'][i]
-        if word.strip():
-            text += word + ' '
-            word_confidences.append((word, None))  # Confidence is not used
+    response = requests.post(
+        'https://api.ocr.space/parse/image',
+        files={'filename': img_bytes},
+        data={'apikey': api_key, 'language': 'eng'}
+    )
 
-    return text.strip(), word_confidences
+    result = response.json()
+    if result['IsErroredOnProcessing']:
+        st.error("OCR API Error: " + result.get('ErrorMessage', ['Unknown error'])[0])
+        return "", []
 
-# Function to correct spelling using Gemini API
+    parsed_text = result['ParsedResults'][0]['ParsedText']
+    words = parsed_text.split()
+    return parsed_text, [(w, None) for w in words]
+
+# Spell correction function remains unchanged
 def correct_spelling_with_gemini(text):
     spell = SpellChecker()
     words = text.split()
@@ -36,10 +40,9 @@ def correct_spelling_with_gemini(text):
             corrected_words.append(word)
     return ' '.join(corrected_words)
 
-
-# Streamlit App
+# Streamlit app logic
 def main():
-    st.title('Image Text Error Detection')
+    st.title('Image Text Error Detection (OCR via API)')
 
     uploaded_image = st.file_uploader("Upload an Image", type=["jpg", "png", "jpeg"])
 
@@ -47,19 +50,17 @@ def main():
         image = Image.open(uploaded_image)
         extracted_text, word_confidences = extract_text_from_image(image)
 
-        # Show extracted words as a list
         words_list = [w for w in extracted_text.split() if w.strip()]
         st.subheader("Extracted Words:")
         for idx, word in enumerate(words_list, 1):
             st.write(f"{idx}. {word}")
 
         if words_list:
-            # Spell check each word and show only changed words
             spell = SpellChecker()
             corrected_pairs = []
             for word in words_list:
                 suggestion = spell.correction(word)
-                if suggestion is not None and suggestion != word:
+                if suggestion and suggestion != word:
                     corrected_pairs.append((word, suggestion))
             if corrected_pairs:
                 st.subheader("Corrected Words:")
