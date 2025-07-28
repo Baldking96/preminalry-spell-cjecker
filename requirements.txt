@@ -1,4 +1,7 @@
 streamlit
+transformers
+torch
 Pillow
 requests
-pyspellchecker
+spellchecker
+
